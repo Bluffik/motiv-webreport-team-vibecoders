@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+.env
+.env.*
+!.env.example
+*.pdf
+*.md
+.git
+certs
+backups
+dist-bundle
+deploy
+*.xlsx

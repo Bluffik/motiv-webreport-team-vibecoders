@@ -1,0 +1,9 @@
+[mysqld]
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+skip-name-resolve
+# Нужны только для MariaDB 10.1 (ROW_FORMAT=DYNAMIC и длинные индексы в utf8mb4).
+# Префикс loose-: новые версии, где этих параметров уже нет, просто пропустят их.
+loose-innodb-file-format = Barracuda
+loose-innodb-file-per-table = 1
+loose-innodb-large-prefix = 1

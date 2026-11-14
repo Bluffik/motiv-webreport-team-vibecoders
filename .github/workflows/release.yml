@@ -1,0 +1,40 @@
+# Релиз по тегу v*: комплект поставки с образами (для сервера без Docker Hub),
+# исходники и контрольные суммы — в GitHub Releases.
+#   git tag v1.0.0 && git push origin v1.0.0
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Версия
+        run: echo "V=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Комплект с образами приложения и MariaDB
+        run: sh deploy/build-bundle.sh "$V"
+
+      - name: Исходники
+        run: git archive --format=tar.gz --prefix="webreport-src-$V/" -o "dist-bundle/webreport-src-$V.tar.gz" HEAD
+
+      - name: Контрольные суммы
+        run: |
+          cd dist-bundle
+          rm -f ./*.sha256
+          sha256sum ./*.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Публикация релиза
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist-bundle/*.tar.gz dist-bundle/SHA256SUMS \
+            --title "Веб отчётность $GITHUB_REF_NAME" --notes-file CHANGELOG.md

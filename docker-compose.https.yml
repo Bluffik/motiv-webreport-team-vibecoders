@@ -1,0 +1,24 @@
+# HTTPS прямо в приложении (без отдельного прокси).
+# Положите сертификат и ключ в ./certs (server.crt, server.key) — свой корпоративный
+# или самоподписанный: sh deploy/make-cert.sh <имя-или-IP-сервера>.
+#
+#   docker-compose -f docker-compose.yml -f docker-compose.https.yml up -d
+#
+# HTTP (APP_PORT) при этом перенаправляет на HTTPS. Если TLS терминируется на
+# балансировщике, этот файл не нужен: задайте TRUST_PROXY и COOKIE_SECURE=true в .env.
+
+version: "2.4"
+
+services:
+  app:
+    environment:
+      TLS_CERT_FILE: /certs/${TLS_CERT_NAME:-server.crt}
+      TLS_KEY_FILE: /certs/${TLS_KEY_NAME:-server.key}
+      HTTPS_PORT: 8443
+      HTTPS_PUBLIC_PORT: ${HTTPS_PORT:-443}
+      HTTP_REDIRECT: ${HTTP_REDIRECT:-true}
+      COOKIE_SECURE: "true"
+    volumes:
+      - ./certs:/certs:ro
+    ports:
+      - "${HTTPS_PORT:-443}:8443"

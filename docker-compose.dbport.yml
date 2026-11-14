@@ -1,0 +1,15 @@
+# Открыть порт MariaDB на хосте (для администрирования или выгрузок в другие системы).
+# По умолчанию — только на 127.0.0.1; для доступа с других машин задайте DB_BIND=0.0.0.0
+# и ограничьте доступ межсетевым экраном.
+#
+#   docker-compose -f docker-compose.yml -f docker-compose.dbport.yml up -d
+
+version: "2.4"
+
+services:
+  db:
+    ports:
+      - "${DB_BIND:-127.0.0.1}:${DB_PUBLIC_PORT:-3306}:3306"
+    networks:
+      - backend
+      - frontend

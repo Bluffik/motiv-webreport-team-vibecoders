@@ -1,0 +1,89 @@
+# «Веб отчётность»: приложение + MariaDB.
+# Формат 2.4 — работает и с docker-compose v1 (1.21+), и с docker compose v2.
+#
+#   cp .env.example .env            # задайте пароли
+#   docker-compose up -d --build    # v1;  в v2: docker compose up -d --build
+#
+# Наружу открыт только веб-интерфейс (APP_PORT, по умолчанию 80). БД — во внутренней
+# сети Docker и видна только приложению (ответ куратора, вопрос 21). Открыть порт 3306
+# для администрирования: docker-compose -f docker-compose.yml -f docker-compose.dbport.yml up -d
+# HTTPS: docker-compose -f docker-compose.yml -f docker-compose.https.yml up -d
+
+version: "2.4"
+
+services:
+  db:
+    # Версия БД — на выбор (ответ куратора, вопрос 19). По умолчанию LTS-ветка 11.4.
+    image: ${DB_IMAGE:-mariadb:11.4}
+    container_name: webreport-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-change-root-password}
+      MYSQL_DATABASE: ${DB_NAME:-webreport}
+      MYSQL_USER: ${DB_USER:-webreport}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-webreport}
+      TZ: ${APP_TZ:-Asia/Yekaterinburg}
+    volumes:
+      - db-data:/var/lib/mysql
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+      - ./db/conf:/etc/mysql/conf.d:ro
+    networks:
+      - backend
+    healthcheck:
+      # healthcheck.sh есть в образах MariaDB 10.4+; для старых версий — mysqladmin ping.
+      test: ["CMD-SHELL", "if command -v healthcheck.sh >/dev/null 2>&1; then healthcheck.sh --connect --innodb_initialized; else mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent; fi"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  app:
+    build: .
+    image: webreport-app:${APP_VERSION:-latest}
+    container_name: webreport-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 8080
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-webreport}
+      DB_USER: ${DB_USER:-webreport}
+      DB_PASSWORD: ${DB_PASSWORD:-webreport}
+      JWT_SECRET: ${JWT_SECRET:-}
+      SETTINGS_SECRET: ${SETTINGS_SECRET:-}
+      APP_TZ: ${APP_TZ:-Asia/Yekaterinburg}
+      ADMIN_LOGIN: ${ADMIN_LOGIN:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      SEED_DEMO: ${SEED_DEMO:-false}
+      CRM_URL_TEMPLATE: ${CRM_URL_TEMPLATE:-}
+      SESSION_HOURS: ${SESSION_HOURS:-12}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      TRUST_PROXY: ${TRUST_PROXY:-loopback, linklocal, uniquelocal}
+      APP_URL: ${APP_URL:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-25}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_SECURITY: ${SMTP_SECURITY:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-Веб отчётность <webreport@localhost>}
+      SMTP_TLS_VERIFY: ${SMTP_TLS_VERIFY:-true}
+      MAIL_ALLOWED_DOMAINS: ${MAIL_ALLOWED_DOMAINS:-}
+    ports:
+      - "${APP_PORT:-80}:8080"
+    networks:
+      - backend
+      - frontend
+
+networks:
+  # Внутренняя сеть без выхода наружу: здесь живёт БД.
+  backend:
+    internal: true
+  # Сеть для публикации порта приложения и исходящей почты (SMTP).
+  frontend: {}
+
+volumes:
+  db-data:

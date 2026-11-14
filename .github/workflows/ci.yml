@@ -1,0 +1,73 @@
+# Проверка на каждый push и pull request: типы, сборка, совместимость с Chrome 75,
+# сквозной тест API на настоящей MariaDB с демо-данными, сборка Docker-образов.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: mariadb:11.4
+        env:
+          MARIADB_DATABASE: webreport
+          MARIADB_USER: webreport
+          MARIADB_PASSWORD: webreport
+          MARIADB_ROOT_PASSWORD: root
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            server/package-lock.json
+            web/package-lock.json
+
+      - name: Зависимости
+        run: |
+          npm ci --prefix server
+          npm ci --prefix web
+
+      - name: Проверка типов
+        run: |
+          (cd server && npx tsc --noEmit -p .)
+          (cd web && npx tsc --noEmit -p .)
+
+      - name: Сборка
+        run: |
+          npm run build --prefix web
+          npm run build --prefix server
+
+      - name: Совместимость с Chrome 75
+        run: node deploy/check-bundle.mjs web/dist/assets
+
+      - name: Скрипты установки
+        run: for f in deploy/*.sh; do sh -n "$f"; done
+
+      - name: Сквозной тест API (демо-данные)
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: '3306'
+          DB_USER: webreport
+          DB_PASSWORD: webreport
+          DB_NAME: webreport
+          JWT_SECRET: ci-secret
+          ADMIN_PASSWORD: admin
+          SEED_DEMO: 'true'
+          APP_TZ: Asia/Yekaterinburg
+        run: |
+          (cd server && node dist/index.js > ../server.log 2>&1 &)
+          for i in $(seq 1 60); do curl -sf http://127.0.0.1:8080/api/health && break; sleep 2; done
+          node tests/api-smoke.mjs http://127.0.0.1:8080 || (cat server.log; exit 1)
+
+      - name: Docker-образ
+        run: docker build -t webreport-app:ci .
